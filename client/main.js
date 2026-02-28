@@ -197,7 +197,9 @@ class Game {
       this.socket.emit('input', input);
     }
     
-    // Reset one-shot inputs
+    // Reset one-shot inputs after sending to server
+    // Dash and push are intentionally one-shot abilities - holding the key
+    // should not trigger multiple actions. Server enforces cooldowns.
     this.keys.shift = false;
     this.keys.space = false;
   }
