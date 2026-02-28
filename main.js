@@ -1,7 +1,7 @@
 /**
- * Robot Arena Mutante
+ * FusionBots Arena
  * MVP - Juego competitivo 2D arcade para 2 jugadores locales
- * Inspirado en Brawl Stars con cambio automático de modos cada 60 segundos
+ * Fusiones deportivas híbridas con cambio automático de modos cada 60 segundos
  */
 
 // =============================================================================
@@ -13,15 +13,17 @@ const GAME_CONFIG = {
     height: 768,
     playerSpeed: 250,
     pushForce: 500,
-    pushCooldown: 1000, // 1 segundo
+    pushCooldown: 800, // 800ms como especificado
     modeDuration: 60000, // 60 segundos
     transitionDuration: 2000, // 2 segundos de transición
+    pauseBeforeChange: 1000, // 1 segundo de pausa antes de cambiar
     ballDrag: 0.98,
     playerRadius: 25,
     ballRadius: 15,
     arenaMargin: 50,
     goalWidth: 100,
-    safeZoneRadius: 180
+    safeZoneRadius: 180,
+    totalGameDuration: 420000 // 7 minutos total (6 modos + fusión total)
 };
 
 // Colores del juego
@@ -33,8 +35,11 @@ const COLORS = {
     goal1: 0x2980b9,   // Azul oscuro
     goal2: 0xc0392b,   // Rojo oscuro
     safeZone: 0x27ae60, // Verde
+    lava: 0xe74c3c,    // Rojo (lava)
     dangerZone: 0xe74c3c, // Rojo
-    ui: 0xecf0f1      // Blanco humo
+    ui: 0xecf0f1,      // Blanco humo
+    zoneControl: 0xf39c12, // Amarillo/naranja para zona de control
+    basket: 0x9b59b6   // Púrpura para canasta
 };
 
 // =============================================================================
@@ -250,35 +255,100 @@ class GameMode {
 }
 
 // =============================================================================
-// MODO 1: GOL
+// CLASE HYBRIDMODE (Extiende GameMode) - Base para modos híbridos
 // =============================================================================
 
-class GoalMode extends GameMode {
-    constructor(scene) {
-        super(scene, "¡MODO GOL!", "Anota en la portería rival");
-        this.goals = [];
+class HybridMode extends GameMode {
+    constructor(scene, name, description, sport1, sport2) {
+        super(scene, name, description);
+        this.sport1 = sport1; // Primer deporte de la fusión
+        this.sport2 = sport2; // Segundo deporte de la fusión
+        this.arenaElements = []; // Elementos visuales del arena
     }
     
-    start() {
-        super.start();
-        
-        // Resetear puntuaciones
-        this.scene.player1.resetScore();
-        this.scene.player2.resetScore();
-        
-        // Mostrar balón
-        this.scene.ball.setVisible(true);
-        this.scene.ball.reset();
-        
-        // Crear porterías
-        this.createGoals();
-        
-        // Resetear posiciones de jugadores
+    // Configurar arena específica del modo
+    setupArena() {
+        // Override en subclases
+    }
+    
+    // Configurar posiciones de jugadores
+    setupPlayers() {
         this.scene.player1.reset(200, GAME_CONFIG.height / 2);
         this.scene.player2.reset(GAME_CONFIG.width - 200, GAME_CONFIG.height / 2);
     }
     
-    createGoals() {
+    // Configurar el balón
+    setupBall() {
+        this.scene.ball.setVisible(true);
+        this.scene.ball.reset();
+    }
+    
+    // Lógica de actualización del modo
+    updateModeLogic(delta) {
+        // Override en subclases
+    }
+    
+    // Verificar condición de victoria
+    checkWinCondition() {
+        if (this.scene.player1.score > this.scene.player2.score) {
+            this.winner = 1;
+        } else if (this.scene.player2.score > this.scene.player1.score) {
+            this.winner = 2;
+        } else {
+            this.winner = 0; // Empate
+        }
+    }
+    
+    // Limpiar elementos del modo
+    cleanup() {
+        this.arenaElements.forEach(element => {
+            if (element && element.destroy) {
+                element.destroy();
+            }
+        });
+        this.arenaElements = [];
+    }
+    
+    start() {
+        super.start();
+        this.scene.player1.resetScore();
+        this.scene.player2.resetScore();
+        this.setupArena();
+        this.setupPlayers();
+        this.setupBall();
+    }
+    
+    update(delta) {
+        this.updateModeLogic(delta);
+    }
+    
+    destroy() {
+        this.cleanup();
+    }
+}
+
+// =============================================================================
+// MODO HÍBRIDO 1: FÚTBOL + SUMO (Gol de Supervivencia)
+// =============================================================================
+
+class SurvivalGoalMode extends HybridMode {
+    constructor(scene) {
+        super(
+            scene, 
+            "GOL DE SUPERVIVENCIA", 
+            "¡Anota o empuja fuera! Goles que se anulan si caes",
+            "Fútbol",
+            "Sumo"
+        );
+        this.goals = [];
+        this.lastGoalScorer = null;
+        this.lastGoalTime = 0;
+        this.goalCancelWindow = 3000; // 3 segundos para anular gol
+        this.pendingGoal = null;
+    }
+    
+    setupArena() {
+        // Crear porterías
         const goalHeight = GAME_CONFIG.goalWidth;
         const goalWidth = 20;
         const centerY = GAME_CONFIG.height / 2;
@@ -290,6 +360,7 @@ class GoalMode extends GameMode {
             COLORS.goal1
         );
         this.scene.physics.add.existing(this.goal1, true);
+        this.arenaElements.push(this.goal1);
         
         // Portería derecha (jugador 1 anota aquí)
         this.goal2 = this.scene.add.rectangle(
@@ -298,367 +369,933 @@ class GoalMode extends GameMode {
             COLORS.goal2
         );
         this.scene.physics.add.existing(this.goal2, true);
+        this.arenaElements.push(this.goal2);
         
         this.goals = [this.goal1, this.goal2];
         
+        // Indicadores visuales de zona de caída (sin paredes laterales)
+        const warningZone = this.scene.add.rectangle(
+            GAME_CONFIG.width / 2, 30, 
+            GAME_CONFIG.width, 60, 
+            COLORS.lava, 0.3
+        );
+        this.arenaElements.push(warningZone);
+        
+        const warningZone2 = this.scene.add.rectangle(
+            GAME_CONFIG.width / 2, GAME_CONFIG.height - 30, 
+            GAME_CONFIG.width, 60, 
+            COLORS.lava, 0.3
+        );
+        this.arenaElements.push(warningZone2);
+        
         // Detectar goles
-        this.scene.physics.add.overlap(this.scene.ball.sprite, this.goal1, () => {
-            if (this.isActive) this.scoreGoal(2); // Jugador 2 anota
+        this.goalOverlap1 = this.scene.physics.add.overlap(
+            this.scene.ball.sprite, this.goal1, () => {
+                if (this.isActive) this.scoreGoal(2);
+            }
+        );
+        
+        this.goalOverlap2 = this.scene.physics.add.overlap(
+            this.scene.ball.sprite, this.goal2, () => {
+                if (this.isActive) this.scoreGoal(1);
+            }
+        );
+        
+        // Desactivar colisión con bordes superior/inferior
+        this.scene.player1.sprite.body.setCollideWorldBounds(false);
+        this.scene.player2.sprite.body.setCollideWorldBounds(false);
+    }
+    
+    scoreGoal(playerNumber) {
+        if (this.pendingGoal) return; // Ya hay un gol pendiente
+        
+        this.pendingGoal = {
+            player: playerNumber,
+            time: Date.now()
+        };
+        
+        this.scene.uiManager.showMessage(`¡GOL PENDIENTE J${playerNumber}! No caigas...`, 1500);
+        
+        // Resetear balón
+        this.scene.ball.reset();
+    }
+    
+    updateModeLogic(delta) {
+        // Verificar si jugadores caen fuera del mapa (arriba/abajo)
+        const margin = 30;
+        
+        [this.scene.player1, this.scene.player2].forEach((player, index) => {
+            const playerNum = index + 1;
+            const sprite = player.sprite;
+            
+            if (sprite.y < margin || sprite.y > GAME_CONFIG.height - margin) {
+                const otherPlayer = playerNum === 1 ? this.scene.player2 : this.scene.player1;
+                const otherPlayerNum = playerNum === 1 ? 2 : 1;
+                
+                // Si hay un gol pendiente y el que anota cae, se anula
+                if (this.pendingGoal && this.pendingGoal.player === playerNum) {
+                    this.scene.uiManager.showMessage(`¡GOL ANULADO! J${playerNum} cayó`, 1500);
+                    this.pendingGoal = null;
+                } else {
+                    // El otro jugador gana punto por empujar fuera
+                    otherPlayer.addScore(1);
+                    this.scene.uiManager.showMessage(`¡ELIMINADO! +1 J${otherPlayerNum}`, 1000);
+                }
+                
+                // Resetear posiciones
+                this.resetPositions();
+            }
         });
         
-        this.scene.physics.add.overlap(this.scene.ball.sprite, this.goal2, () => {
-            if (this.isActive) this.scoreGoal(1); // Jugador 1 anota
+        // Confirmar gol pendiente después de 3 segundos
+        if (this.pendingGoal && Date.now() - this.pendingGoal.time >= this.goalCancelWindow) {
+            const player = this.pendingGoal.player === 1 ? this.scene.player1 : this.scene.player2;
+            player.addScore(1);
+            this.scene.uiManager.showMessage(`¡GOL CONFIRMADO! +1 J${this.pendingGoal.player}`, 1000);
+            this.pendingGoal = null;
+            this.resetPositions();
+        }
+    }
+    
+    resetPositions() {
+        this.scene.player1.reset(200, GAME_CONFIG.height / 2);
+        this.scene.player2.reset(GAME_CONFIG.width - 200, GAME_CONFIG.height / 2);
+        this.scene.ball.reset();
+    }
+    
+    cleanup() {
+        super.cleanup();
+        // Restaurar colisión con bordes
+        if (this.scene.player1) {
+            this.scene.player1.sprite.body.setCollideWorldBounds(true);
+        }
+        if (this.scene.player2) {
+            this.scene.player2.sprite.body.setCollideWorldBounds(true);
+        }
+        // Limpiar overlaps
+        if (this.goalOverlap1) this.goalOverlap1.destroy();
+        if (this.goalOverlap2) this.goalOverlap2.destroy();
+        this.pendingGoal = null;
+    }
+}
+
+// =============================================================================
+// MODO HÍBRIDO 2: RUGBY + ZONA DE CONTROL (Carry Dominance)
+// =============================================================================
+
+class CarryDominanceMode extends HybridMode {
+    constructor(scene) {
+        super(
+            scene, 
+            "CARRY DOMINANCE", 
+            "Cruza línea rival con balón +2 | Zona central +1 cada 3s",
+            "Rugby",
+            "Zona de Control"
+        );
+        this.controlZone = null;
+        this.ballCarrier = null;
+        this.zoneTimer = 0;
+        this.zonePointInterval = 3000; // 3 segundos
+        this.tryLines = [];
+        this.carrierSlowdown = 0.7; // 70% de velocidad con balón
+    }
+    
+    setupArena() {
+        // Líneas de try (sin porterías)
+        const lineWidth = 10;
+        
+        // Línea izquierda (J1 debe cruzar aquí)
+        const tryLine1 = this.scene.add.rectangle(
+            GAME_CONFIG.arenaMargin, GAME_CONFIG.height / 2,
+            lineWidth, GAME_CONFIG.height - GAME_CONFIG.arenaMargin * 2,
+            COLORS.goal2, 0.5
+        );
+        this.arenaElements.push(tryLine1);
+        this.tryLines.push({ line: tryLine1, forPlayer: 1 });
+        
+        // Línea derecha (J2 debe cruzar aquí)
+        const tryLine2 = this.scene.add.rectangle(
+            GAME_CONFIG.width - GAME_CONFIG.arenaMargin, GAME_CONFIG.height / 2,
+            lineWidth, GAME_CONFIG.height - GAME_CONFIG.arenaMargin * 2,
+            COLORS.goal1, 0.5
+        );
+        this.arenaElements.push(tryLine2);
+        this.tryLines.push({ line: tryLine2, forPlayer: 2 });
+        
+        // Zona de control central
+        this.controlZone = this.scene.add.circle(
+            GAME_CONFIG.width / 2, GAME_CONFIG.height / 2,
+            100, COLORS.zoneControl, 0.3
+        );
+        this.controlZone.setStrokeStyle(3, COLORS.zoneControl);
+        this.arenaElements.push(this.controlZone);
+        
+        // Texto de zona
+        this.zoneText = this.scene.add.text(
+            GAME_CONFIG.width / 2, GAME_CONFIG.height / 2 - 120,
+            'ZONA +1', {
+                fontSize: '16px',
+                fontFamily: 'Arial',
+                color: '#f39c12'
+            }
+        ).setOrigin(0.5);
+        this.arenaElements.push(this.zoneText);
+    }
+    
+    setupBall() {
+        super.setupBall();
+        this.ballCarrier = null;
+    }
+    
+    updateModeLogic(delta) {
+        const ball = this.scene.ball.sprite;
+        const p1 = this.scene.player1.sprite;
+        const p2 = this.scene.player2.sprite;
+        
+        // Determinar portador del balón
+        const dist1 = Phaser.Math.Distance.Between(ball.x, ball.y, p1.x, p1.y);
+        const dist2 = Phaser.Math.Distance.Between(ball.x, ball.y, p2.x, p2.y);
+        const carryDistance = GAME_CONFIG.playerRadius + GAME_CONFIG.ballRadius + 10;
+        
+        const prevCarrier = this.ballCarrier;
+        
+        if (dist1 < carryDistance && dist1 < dist2) {
+            this.ballCarrier = 1;
+            // Hacer que el balón siga al jugador
+            ball.setPosition(p1.x, p1.y);
+            ball.body.setVelocity(0, 0);
+        } else if (dist2 < carryDistance && dist2 < dist1) {
+            this.ballCarrier = 2;
+            ball.setPosition(p2.x, p2.y);
+            ball.body.setVelocity(0, 0);
+        } else {
+            this.ballCarrier = null;
+        }
+        
+        // Aplicar ralentización al portador
+        if (this.ballCarrier === 1) {
+            this.scene.player1.sprite.body.velocity.x *= this.carrierSlowdown;
+            this.scene.player1.sprite.body.velocity.y *= this.carrierSlowdown;
+        } else if (this.ballCarrier === 2) {
+            this.scene.player2.sprite.body.velocity.x *= this.carrierSlowdown;
+            this.scene.player2.sprite.body.velocity.y *= this.carrierSlowdown;
+        }
+        
+        // Verificar try (cruzar línea con balón)
+        if (this.ballCarrier === 1 && p1.x >= GAME_CONFIG.width - GAME_CONFIG.arenaMargin - 20) {
+            this.scene.player1.addScore(2);
+            this.scene.uiManager.showMessage('¡TRY! +2 J1', 1000);
+            this.resetPositions();
+        }
+        if (this.ballCarrier === 2 && p2.x <= GAME_CONFIG.arenaMargin + 20) {
+            this.scene.player2.addScore(2);
+            this.scene.uiManager.showMessage('¡TRY! +2 J2', 1000);
+            this.resetPositions();
+        }
+        
+        // Zona de control - puntos por permanecer
+        const centerX = GAME_CONFIG.width / 2;
+        const centerY = GAME_CONFIG.height / 2;
+        const zoneRadius = 100;
+        
+        const p1InZone = Phaser.Math.Distance.Between(p1.x, p1.y, centerX, centerY) < zoneRadius;
+        const p2InZone = Phaser.Math.Distance.Between(p2.x, p2.y, centerX, centerY) < zoneRadius;
+        
+        this.zoneTimer += delta;
+        
+        if (this.zoneTimer >= this.zonePointInterval) {
+            this.zoneTimer = 0;
+            
+            if (p1InZone && !p2InZone) {
+                this.scene.player1.addScore(1);
+                this.scene.uiManager.showMessage('ZONA +1 J1', 500);
+            } else if (p2InZone && !p1InZone) {
+                this.scene.player2.addScore(1);
+                this.scene.uiManager.showMessage('ZONA +1 J2', 500);
+            }
+        }
+    }
+    
+    resetPositions() {
+        this.setupPlayers();
+        this.scene.ball.reset();
+        this.ballCarrier = null;
+    }
+}
+
+// =============================================================================
+// MODO HÍBRIDO 3: BALONCESTO + LAVA PROGRESIVA (Triple Riesgo)
+// =============================================================================
+
+class TripleRiskMode extends HybridMode {
+    constructor(scene) {
+        super(
+            scene, 
+            "TRIPLE RIESGO", 
+            "Canasta central | Lava = +3 pero reduce puntos",
+            "Baloncesto",
+            "Lava Progresiva"
+        );
+        this.basket = null;
+        this.lavaZone = null;
+        this.safeZone = null;
+        this.initialSafeRadius = 280;
+        this.currentSafeRadius = 280;
+        this.minSafeRadius = 80;
+        this.shrinkRate = 3; // Píxeles por segundo
+        this.lavaDamageRate = 2; // Puntos perdidos por segundo en lava
+        this.basketRadius = 40;
+    }
+    
+    setupArena() {
+        const centerX = GAME_CONFIG.width / 2;
+        const centerY = GAME_CONFIG.height / 2;
+        
+        this.currentSafeRadius = this.initialSafeRadius;
+        
+        // Zona de lava (fondo rojo)
+        this.lavaZone = this.scene.add.rectangle(
+            centerX, centerY,
+            GAME_CONFIG.width, GAME_CONFIG.height,
+            COLORS.lava, 0.25
+        );
+        this.lavaZone.setDepth(-2);
+        this.arenaElements.push(this.lavaZone);
+        
+        // Zona segura (círculo verde que se reduce)
+        this.safeZone = this.scene.add.circle(
+            centerX, centerY,
+            this.currentSafeRadius,
+            COLORS.safeZone, 0.3
+        );
+        this.safeZone.setStrokeStyle(4, COLORS.safeZone);
+        this.safeZone.setDepth(-1);
+        this.arenaElements.push(this.safeZone);
+        
+        // Canasta central (zona pequeña)
+        this.basket = this.scene.add.circle(
+            centerX, centerY,
+            this.basketRadius,
+            COLORS.basket, 0.5
+        );
+        this.basket.setStrokeStyle(4, 0xffffff);
+        this.arenaElements.push(this.basket);
+        
+        // Texto de canasta
+        this.basketText = this.scene.add.text(
+            centerX, centerY - 60,
+            'CANASTA', {
+                fontSize: '14px',
+                fontFamily: 'Arial',
+                color: '#9b59b6'
+            }
+        ).setOrigin(0.5);
+        this.arenaElements.push(this.basketText);
+        
+        // Dar puntos iniciales para supervivencia
+        this.scene.player1.score = 50;
+        this.scene.player2.score = 50;
+    }
+    
+    updateModeLogic(delta) {
+        const centerX = GAME_CONFIG.width / 2;
+        const centerY = GAME_CONFIG.height / 2;
+        const ball = this.scene.ball.sprite;
+        
+        // Reducir zona segura progresivamente
+        if (this.currentSafeRadius > this.minSafeRadius) {
+            this.currentSafeRadius -= (this.shrinkRate * delta) / 1000;
+            this.safeZone.setRadius(Math.max(this.currentSafeRadius, this.minSafeRadius));
+        }
+        
+        // Verificar si el balón entra en la canasta
+        const ballDist = Phaser.Math.Distance.Between(ball.x, ball.y, centerX, centerY);
+        if (ballDist < this.basketRadius) {
+            // Determinar quién metió el balón (último en tocarlo)
+            const dist1 = Phaser.Math.Distance.Between(
+                ball.x, ball.y,
+                this.scene.player1.sprite.x, this.scene.player1.sprite.y
+            );
+            const dist2 = Phaser.Math.Distance.Between(
+                ball.x, ball.y,
+                this.scene.player2.sprite.x, this.scene.player2.sprite.y
+            );
+            
+            // El jugador más cercano es el que "metió" el balón
+            let scorer, scorerNum;
+            if (dist1 < dist2) {
+                scorer = this.scene.player1;
+                scorerNum = 1;
+            } else {
+                scorer = this.scene.player2;
+                scorerNum = 2;
+            }
+            
+            // Determinar si está en lava o zona segura
+            const scorerDist = Phaser.Math.Distance.Between(
+                scorer.sprite.x, scorer.sprite.y, centerX, centerY
+            );
+            
+            if (scorerDist > this.currentSafeRadius) {
+                // En lava = +3 puntos
+                scorer.addScore(3);
+                this.scene.uiManager.showMessage(`¡TRIPLE! +3 J${scorerNum}`, 1000);
+            } else {
+                // En zona segura = +1 punto
+                scorer.addScore(1);
+                this.scene.uiManager.showMessage(`¡CANASTA! +1 J${scorerNum}`, 1000);
+            }
+            
+            this.scene.ball.reset();
+        }
+        
+        // Daño por lava a jugadores
+        [this.scene.player1, this.scene.player2].forEach(player => {
+            const playerDist = Phaser.Math.Distance.Between(
+                player.sprite.x, player.sprite.y, centerX, centerY
+            );
+            
+            if (playerDist > this.currentSafeRadius) {
+                const damage = (this.lavaDamageRate * delta) / 1000;
+                player.score = Math.max(0, player.score - damage);
+            }
         });
+    }
+}
+
+// =============================================================================
+// MODO HÍBRIDO 4: HOCKEY + PORTERÍAS MÓVILES (Objetivo Dinámico)
+// =============================================================================
+
+class DynamicGoalMode extends HybridMode {
+    constructor(scene) {
+        super(
+            scene, 
+            "OBJETIVO DINÁMICO", 
+            "¡Porterías que se mueven! Rebote fuerte del balón",
+            "Hockey",
+            "Porterías Móviles"
+        );
+        this.movingGoals = [];
+        this.goalSpeed = 50;
+        this.goalDirection = [1, -1]; // Dirección de movimiento de cada portería
+    }
+    
+    setupArena() {
+        const goalHeight = 80;
+        const goalWidth = 25;
+        
+        // Portería móvil izquierda
+        this.goal1 = this.scene.add.rectangle(
+            60, GAME_CONFIG.height / 2,
+            goalWidth, goalHeight,
+            COLORS.goal1
+        );
+        this.scene.physics.add.existing(this.goal1, false);
+        this.goal1.body.setImmovable(true);
+        this.goal1.body.setBounce(0);
+        this.arenaElements.push(this.goal1);
+        
+        // Portería móvil derecha
+        this.goal2 = this.scene.add.rectangle(
+            GAME_CONFIG.width - 60, GAME_CONFIG.height / 2,
+            goalWidth, goalHeight,
+            COLORS.goal2
+        );
+        this.scene.physics.add.existing(this.goal2, false);
+        this.goal2.body.setImmovable(true);
+        this.goal2.body.setBounce(0);
+        this.arenaElements.push(this.goal2);
+        
+        this.movingGoals = [this.goal1, this.goal2];
+        
+        // Aumentar rebote del balón (hockey)
+        this.scene.ball.sprite.body.setBounce(1.2);
+        
+        // Detectar goles
+        this.goalOverlap1 = this.scene.physics.add.overlap(
+            this.scene.ball.sprite, this.goal1, () => {
+                if (this.isActive) this.scoreGoal(2);
+            }
+        );
+        
+        this.goalOverlap2 = this.scene.physics.add.overlap(
+            this.scene.ball.sprite, this.goal2, () => {
+                if (this.isActive) this.scoreGoal(1);
+            }
+        );
+    }
+    
+    setupBall() {
+        super.setupBall();
+        // Configurar balón de hockey (más rebote)
+        this.scene.ball.sprite.body.setBounce(1.2);
+        this.scene.ball.sprite.body.setDrag(20); // Menos fricción
     }
     
     scoreGoal(playerNumber) {
         const player = playerNumber === 1 ? this.scene.player1 : this.scene.player2;
         player.addScore(1);
+        this.scene.uiManager.showMessage(`¡GOL! +1 J${playerNumber}`, 1000);
         
-        // Efecto visual de gol
-        this.scene.uiManager.showMessage(`¡GOL! Jugador ${playerNumber}`, 1000);
-        
-        // Resetear balón y jugadores
+        // Resetear
         this.scene.ball.reset();
-        this.scene.player1.reset(200, GAME_CONFIG.height / 2);
-        this.scene.player2.reset(GAME_CONFIG.width - 200, GAME_CONFIG.height / 2);
+        this.setupPlayers();
     }
     
-    update(delta) {
-        // La lógica de goles se maneja por colisiones
+    updateModeLogic(delta) {
+        const margin = 100;
+        const maxY = GAME_CONFIG.height - margin;
+        const minY = margin;
+        
+        // Mover porterías
+        this.movingGoals.forEach((goal, index) => {
+            const newY = goal.y + (this.goalSpeed * this.goalDirection[index] * delta) / 1000;
+            
+            // Cambiar dirección si llega al límite
+            if (newY >= maxY || newY <= minY) {
+                this.goalDirection[index] *= -1;
+            }
+            
+            goal.setY(Phaser.Math.Clamp(newY, minY, maxY));
+            goal.body.updateFromGameObject();
+        });
     }
     
-    checkWinCondition() {
-        if (this.scene.player1.score > this.scene.player2.score) {
-            this.winner = 1;
-        } else if (this.scene.player2.score > this.scene.player1.score) {
-            this.winner = 2;
-        } else {
-            this.winner = 0; // Empate
+    cleanup() {
+        super.cleanup();
+        // Restaurar rebote normal del balón
+        if (this.scene.ball) {
+            this.scene.ball.sprite.body.setBounce(0.8);
+            this.scene.ball.sprite.body.setDrag(50);
         }
-    }
-    
-    destroy() {
-        this.goals.forEach(goal => goal.destroy());
-        this.goals = [];
+        if (this.goalOverlap1) this.goalOverlap1.destroy();
+        if (this.goalOverlap2) this.goalOverlap2.destroy();
     }
 }
 
 // =============================================================================
-// MODO 2: POSESIÓN
+// MODO HÍBRIDO 5: BOXEO + BALÓN EXPLOSIVO (Impacto Controlado)
 // =============================================================================
 
-class PossessionMode extends GameMode {
+class ExplosiveBallMode extends HybridMode {
     constructor(scene) {
-        super(scene, "¡MODO POSESIÓN!", "Mantén el balón cerca de ti");
-        this.possessionDistance = 50;
+        super(
+            scene, 
+            "IMPACTO CONTROLADO", 
+            "¡El balón explota! El más cercano pierde puntos",
+            "Boxeo",
+            "Balón Explosivo"
+        );
+        this.explosionTimer = 0;
+        this.explosionTime = 8000; // 8 segundos
+        this.timerText = null;
+        this.explosionPenalty = 3;
     }
     
-    start() {
-        super.start();
+    setupArena() {
+        // Arena simple para boxeo
+        const ring = this.scene.add.rectangle(
+            GAME_CONFIG.width / 2, GAME_CONFIG.height / 2,
+            GAME_CONFIG.width - 100, GAME_CONFIG.height - 100
+        );
+        ring.setStrokeStyle(6, 0xffffff, 0.5);
+        this.arenaElements.push(ring);
         
-        // Resetear tiempos de posesión
-        this.scene.player1.possessionTime = 0;
-        this.scene.player2.possessionTime = 0;
-        this.scene.player1.resetScore();
-        this.scene.player2.resetScore();
+        // Timer visual del balón
+        this.timerText = this.scene.add.text(
+            GAME_CONFIG.width / 2, 100,
+            '8', {
+                fontSize: '48px',
+                fontFamily: 'Arial',
+                color: '#ff0000',
+                fontStyle: 'bold'
+            }
+        ).setOrigin(0.5);
+        this.timerText.setDepth(50);
+        this.arenaElements.push(this.timerText);
         
-        // Mostrar balón
-        this.scene.ball.setVisible(true);
-        this.scene.ball.reset();
-        
-        // Resetear posiciones
-        this.scene.player1.reset(200, GAME_CONFIG.height / 2);
-        this.scene.player2.reset(GAME_CONFIG.width - 200, GAME_CONFIG.height / 2);
+        // Dar puntos iniciales
+        this.scene.player1.score = 20;
+        this.scene.player2.score = 20;
     }
     
-    update(delta) {
+    setupBall() {
+        super.setupBall();
+        this.explosionTimer = 0;
+        this.scene.ball.sprite.setFillStyle(0xffff00); // Amarillo/naranja para bomba
+    }
+    
+    updateModeLogic(delta) {
+        // Actualizar timer de explosión
+        this.explosionTimer += delta;
+        const timeLeft = Math.ceil((this.explosionTime - this.explosionTimer) / 1000);
+        
+        // Actualizar texto del timer
+        if (this.timerText) {
+            this.timerText.setText(Math.max(0, timeLeft).toString());
+            
+            // Cambiar color según tiempo
+            if (timeLeft <= 2) {
+                this.timerText.setColor('#ff0000');
+                this.scene.ball.sprite.setFillStyle(0xff0000); // Rojo cuando va a explotar
+            } else if (timeLeft <= 4) {
+                this.timerText.setColor('#ff8800');
+                this.scene.ball.sprite.setFillStyle(0xff8800); // Naranja
+            } else {
+                this.timerText.setColor('#ffff00');
+                this.scene.ball.sprite.setFillStyle(0xffff00); // Amarillo
+            }
+        }
+        
+        // Explosión
+        if (this.explosionTimer >= this.explosionTime) {
+            this.explodeBall();
+        }
+    }
+    
+    explodeBall() {
         const ball = this.scene.ball.sprite;
         const p1 = this.scene.player1.sprite;
         const p2 = this.scene.player2.sprite;
         
-        // Calcular distancias
         const dist1 = Phaser.Math.Distance.Between(ball.x, ball.y, p1.x, p1.y);
         const dist2 = Phaser.Math.Distance.Between(ball.x, ball.y, p2.x, p2.y);
         
-        // Acumular tiempo de posesión
-        if (dist1 < this.possessionDistance && dist1 < dist2) {
-            this.scene.player1.possessionTime += delta;
-            this.scene.player1.score = Math.floor(this.scene.player1.possessionTime / 1000);
-        } else if (dist2 < this.possessionDistance && dist2 < dist1) {
-            this.scene.player2.possessionTime += delta;
-            this.scene.player2.score = Math.floor(this.scene.player2.possessionTime / 1000);
-        }
-    }
-    
-    checkWinCondition() {
-        if (this.scene.player1.possessionTime > this.scene.player2.possessionTime) {
-            this.winner = 1;
-        } else if (this.scene.player2.possessionTime > this.scene.player1.possessionTime) {
-            this.winner = 2;
+        // El más cercano pierde puntos
+        if (dist1 < dist2) {
+            this.scene.player1.score = Math.max(0, this.scene.player1.score - this.explosionPenalty);
+            this.scene.uiManager.showMessage(`¡EXPLOSIÓN! -${this.explosionPenalty} J1`, 1500);
+        } else if (dist2 < dist1) {
+            this.scene.player2.score = Math.max(0, this.scene.player2.score - this.explosionPenalty);
+            this.scene.uiManager.showMessage(`¡EXPLOSIÓN! -${this.explosionPenalty} J2`, 1500);
         } else {
-            this.winner = 0;
+            // Empate de distancia, ambos pierden
+            this.scene.player1.score = Math.max(0, this.scene.player1.score - this.explosionPenalty / 2);
+            this.scene.player2.score = Math.max(0, this.scene.player2.score - this.explosionPenalty / 2);
+            this.scene.uiManager.showMessage('¡EXPLOSIÓN! Ambos afectados', 1500);
         }
+        
+        // Efecto visual de explosión
+        this.scene.cameras.main.shake(200, 0.02);
+        
+        // Resetear
+        this.scene.ball.reset();
+        this.scene.ball.sprite.setFillStyle(0xffff00);
+        this.explosionTimer = 0;
     }
     
-    destroy() {
-        // No hay elementos especiales que destruir
+    cleanup() {
+        super.cleanup();
+        // Restaurar color del balón
+        if (this.scene.ball) {
+            this.scene.ball.sprite.setFillStyle(COLORS.ball);
+        }
     }
 }
 
 // =============================================================================
-// MODO 3: COMBATE
+// MODO HÍBRIDO 6: TENIS + EMPUJÓN LIBRE (Rally de Impacto)
 // =============================================================================
 
-class CombatMode extends GameMode {
+class ImpactRallyMode extends HybridMode {
     constructor(scene) {
-        super(scene, "¡MODO COMBATE!", "Empuja al rival contra las paredes");
-    }
-    
-    start() {
-        super.start();
-        
-        // Resetear puntuaciones
-        this.scene.player1.resetScore();
-        this.scene.player2.resetScore();
-        
-        // Ocultar balón
-        this.scene.ball.setVisible(false);
-        
-        // Resetear posiciones al centro
-        this.scene.player1.reset(GAME_CONFIG.width / 2 - 100, GAME_CONFIG.height / 2);
-        this.scene.player2.reset(GAME_CONFIG.width / 2 + 100, GAME_CONFIG.height / 2);
-    }
-    
-    update(delta) {
-        // Verificar si algún jugador está cerca del borde (empujado)
-        this.checkWallCollision(this.scene.player1, 2);
-        this.checkWallCollision(this.scene.player2, 1);
-    }
-    
-    checkWallCollision(player, scoringPlayer) {
-        const margin = 10;
-        const sprite = player.sprite;
-        
-        // Verificar si está tocando alguna pared con velocidad significativa
-        const speed = Math.sqrt(
-            sprite.body.velocity.x ** 2 + 
-            sprite.body.velocity.y ** 2
+        super(
+            scene, 
+            "RALLY DE IMPACTO", 
+            "El balón debe cruzar la línea central constantemente",
+            "Tenis",
+            "Empujón Libre"
         );
+        this.centerLine = null;
+        this.lastSide = null; // 'left' o 'right'
+        this.ballInPlay = true;
+        this.touchedByPlayer = { 1: false, 2: false };
+        this.lastTouchedBy = null;
+    }
+    
+    setupArena() {
+        // Línea central divisoria
+        this.centerLine = this.scene.add.rectangle(
+            GAME_CONFIG.width / 2, GAME_CONFIG.height / 2,
+            6, GAME_CONFIG.height - GAME_CONFIG.arenaMargin * 2,
+            0xffffff, 0.8
+        );
+        this.arenaElements.push(this.centerLine);
         
-        if (speed > 200) {
-            if (sprite.x <= GAME_CONFIG.playerRadius + margin ||
-                sprite.x >= GAME_CONFIG.width - GAME_CONFIG.playerRadius - margin ||
-                sprite.y <= GAME_CONFIG.playerRadius + margin ||
-                sprite.y >= GAME_CONFIG.height - GAME_CONFIG.playerRadius - margin) {
-                
-                const scoringPlayerObj = scoringPlayer === 1 ? this.scene.player1 : this.scene.player2;
-                scoringPlayerObj.addScore(1);
-                
-                this.scene.uiManager.showMessage(`¡IMPACTO! Punto J${scoringPlayer}`, 500);
-                
-                // Resetear posiciones
-                setTimeout(() => {
-                    this.scene.player1.reset(GAME_CONFIG.width / 2 - 100, GAME_CONFIG.height / 2);
-                    this.scene.player2.reset(GAME_CONFIG.width / 2 + 100, GAME_CONFIG.height / 2);
-                }, 500);
+        // Zonas de campo
+        const leftZone = this.scene.add.rectangle(
+            GAME_CONFIG.width / 4, GAME_CONFIG.height / 2,
+            GAME_CONFIG.width / 2 - 30, GAME_CONFIG.height - 100,
+            COLORS.goal1, 0.1
+        );
+        leftZone.setDepth(-1);
+        this.arenaElements.push(leftZone);
+        
+        const rightZone = this.scene.add.rectangle(
+            GAME_CONFIG.width * 3 / 4, GAME_CONFIG.height / 2,
+            GAME_CONFIG.width / 2 - 30, GAME_CONFIG.height - 100,
+            COLORS.goal2, 0.1
+        );
+        rightZone.setDepth(-1);
+        this.arenaElements.push(rightZone);
+        
+        // Indicadores de lado
+        this.sideText1 = this.scene.add.text(
+            GAME_CONFIG.width / 4, 80,
+            'LADO J1', {
+                fontSize: '18px',
+                fontFamily: 'Arial',
+                color: '#3498db'
+            }
+        ).setOrigin(0.5);
+        this.arenaElements.push(this.sideText1);
+        
+        this.sideText2 = this.scene.add.text(
+            GAME_CONFIG.width * 3 / 4, 80,
+            'LADO J2', {
+                fontSize: '18px',
+                fontFamily: 'Arial',
+                color: '#e74c3c'
+            }
+        ).setOrigin(0.5);
+        this.arenaElements.push(this.sideText2);
+    }
+    
+    setupBall() {
+        super.setupBall();
+        this.lastSide = null;
+        this.ballInPlay = true;
+        this.touchedByPlayer = { 1: false, 2: false };
+        this.lastTouchedBy = null;
+        
+        // Dar velocidad inicial al balón
+        const direction = Phaser.Math.Between(0, 1) === 0 ? -1 : 1;
+        this.scene.ball.sprite.body.setVelocity(direction * 150, Phaser.Math.Between(-100, 100));
+    }
+    
+    updateModeLogic(delta) {
+        const ball = this.scene.ball.sprite;
+        const centerX = GAME_CONFIG.width / 2;
+        const p1 = this.scene.player1.sprite;
+        const p2 = this.scene.player2.sprite;
+        
+        // Determinar en qué lado está el balón
+        const currentSide = ball.x < centerX ? 'left' : 'right';
+        
+        // Detectar si el balón cruza la línea central
+        if (this.lastSide && this.lastSide !== currentSide) {
+            // El balón cruzó
+            this.touchedByPlayer = { 1: false, 2: false };
+        }
+        this.lastSide = currentSide;
+        
+        // Detectar contacto con jugadores
+        const dist1 = Phaser.Math.Distance.Between(ball.x, ball.y, p1.x, p1.y);
+        const dist2 = Phaser.Math.Distance.Between(ball.x, ball.y, p2.x, p2.y);
+        const touchDist = GAME_CONFIG.playerRadius + GAME_CONFIG.ballRadius + 5;
+        
+        if (dist1 < touchDist) {
+            this.touchedByPlayer[1] = true;
+            this.lastTouchedBy = 1;
+        }
+        if (dist2 < touchDist) {
+            this.touchedByPlayer[2] = true;
+            this.lastTouchedBy = 2;
+        }
+        
+        // Verificar si el balón cae en un lado sin ser tocado por el jugador de ese lado
+        // El balón está "muerto" si su velocidad es muy baja en un lado
+        const ballSpeed = Math.sqrt(ball.body.velocity.x ** 2 + ball.body.velocity.y ** 2);
+        
+        if (ballSpeed < 30 && this.ballInPlay) {
+            // El balón se detuvo
+            if (currentSide === 'left' && !this.touchedByPlayer[1]) {
+                // Cayó en lado de J1 sin que J1 lo tocara - punto para J2
+                this.scene.player2.addScore(1);
+                this.scene.uiManager.showMessage('¡PUNTO! +1 J2', 1000);
+                this.resetRally();
+            } else if (currentSide === 'right' && !this.touchedByPlayer[2]) {
+                // Cayó en lado de J2 sin que J2 lo tocara - punto para J1
+                this.scene.player1.addScore(1);
+                this.scene.uiManager.showMessage('¡PUNTO! +1 J1', 1000);
+                this.resetRally();
+            } else {
+                // El balón se detuvo pero ambos lo tocaron, relanzar
+                this.resetRally();
             }
         }
-    }
-    
-    checkWinCondition() {
-        if (this.scene.player1.score > this.scene.player2.score) {
-            this.winner = 1;
-        } else if (this.scene.player2.score > this.scene.player1.score) {
-            this.winner = 2;
-        } else {
-            this.winner = 0;
+        
+        // Verificar si el balón sale por los bordes superior/inferior (fuera)
+        if (ball.y <= GAME_CONFIG.arenaMargin || ball.y >= GAME_CONFIG.height - GAME_CONFIG.arenaMargin) {
+            // El último en tocar pierde el punto
+            if (this.lastTouchedBy === 1) {
+                this.scene.player2.addScore(1);
+                this.scene.uiManager.showMessage('¡FUERA! +1 J2', 1000);
+            } else if (this.lastTouchedBy === 2) {
+                this.scene.player1.addScore(1);
+                this.scene.uiManager.showMessage('¡FUERA! +1 J1', 1000);
+            }
+            this.resetRally();
         }
     }
     
-    destroy() {
-        // No hay elementos especiales que destruir
+    resetRally() {
+        this.ballInPlay = false;
+        this.scene.time.delayedCall(1000, () => {
+            this.setupBall();
+            this.setupPlayers();
+        });
     }
 }
 
 // =============================================================================
-// MODO 4: ZONA SEGURA
+// MODO ESPECIAL: FUSIÓN TOTAL (Combina 2 sistemas)
 // =============================================================================
 
-class SafeZoneMode extends GameMode {
+class TotalFusionMode extends HybridMode {
     constructor(scene) {
-        super(scene, "¡MODO ZONA SEGURA!", "¡Mantente en el centro!");
+        super(
+            scene, 
+            "¡FUSIÓN TOTAL!", 
+            "Lava progresiva + Porterías móviles",
+            "Fusión",
+            "Total"
+        );
+        this.movingGoals = [];
+        this.goalSpeed = 60;
+        this.goalDirection = [1, -1];
+        this.lavaZone = null;
         this.safeZone = null;
-        this.dangerZone = null;
-        this.damageRate = 10; // Puntos perdidos por segundo fuera de zona
+        this.currentSafeRadius = 300;
+        this.minSafeRadius = 100;
+        this.shrinkRate = 5;
+        this.lavaDamageRate = 3;
     }
     
-    start() {
-        super.start();
-        
-        // Iniciar con puntos altos (supervivencia)
-        this.scene.player1.score = 100;
-        this.scene.player2.score = 100;
-        
-        // Ocultar balón
-        this.scene.ball.setVisible(false);
-        
-        // Crear zonas
-        this.createZones();
-        
-        // Resetear posiciones
-        this.scene.player1.reset(GAME_CONFIG.width / 2 - 50, GAME_CONFIG.height / 2);
-        this.scene.player2.reset(GAME_CONFIG.width / 2 + 50, GAME_CONFIG.height / 2);
-    }
-    
-    createZones() {
+    setupArena() {
         const centerX = GAME_CONFIG.width / 2;
         const centerY = GAME_CONFIG.height / 2;
         
-        // Zona de peligro (fondo rojo)
-        this.dangerZone = this.scene.add.rectangle(
+        // LAVA: Zona de lava
+        this.lavaZone = this.scene.add.rectangle(
             centerX, centerY,
             GAME_CONFIG.width, GAME_CONFIG.height,
-            COLORS.dangerZone, 0.2
+            COLORS.lava, 0.2
         );
-        this.dangerZone.setDepth(-1);
+        this.lavaZone.setDepth(-2);
+        this.arenaElements.push(this.lavaZone);
         
-        // Zona segura (círculo verde)
+        // Zona segura que se reduce
         this.safeZone = this.scene.add.circle(
             centerX, centerY,
-            GAME_CONFIG.safeZoneRadius,
-            COLORS.safeZone, 0.3
+            this.currentSafeRadius,
+            COLORS.safeZone, 0.25
         );
         this.safeZone.setStrokeStyle(4, COLORS.safeZone);
         this.safeZone.setDepth(-1);
+        this.arenaElements.push(this.safeZone);
+        
+        // PORTERÍAS MÓVILES
+        const goalHeight = 70;
+        const goalWidth = 25;
+        
+        this.goal1 = this.scene.add.rectangle(
+            70, centerY,
+            goalWidth, goalHeight,
+            COLORS.goal1
+        );
+        this.scene.physics.add.existing(this.goal1, false);
+        this.goal1.body.setImmovable(true);
+        this.arenaElements.push(this.goal1);
+        
+        this.goal2 = this.scene.add.rectangle(
+            GAME_CONFIG.width - 70, centerY,
+            goalWidth, goalHeight,
+            COLORS.goal2
+        );
+        this.scene.physics.add.existing(this.goal2, false);
+        this.goal2.body.setImmovable(true);
+        this.arenaElements.push(this.goal2);
+        
+        this.movingGoals = [this.goal1, this.goal2];
+        
+        // Detectar goles
+        this.goalOverlap1 = this.scene.physics.add.overlap(
+            this.scene.ball.sprite, this.goal1, () => {
+                if (this.isActive) this.scoreGoal(2);
+            }
+        );
+        
+        this.goalOverlap2 = this.scene.physics.add.overlap(
+            this.scene.ball.sprite, this.goal2, () => {
+                if (this.isActive) this.scoreGoal(1);
+            }
+        );
+        
+        // Puntos iniciales
+        this.scene.player1.score = 30;
+        this.scene.player2.score = 30;
     }
     
-    update(delta) {
+    setupBall() {
+        super.setupBall();
+        this.scene.ball.sprite.body.setBounce(1.1);
+    }
+    
+    scoreGoal(playerNumber) {
+        const player = playerNumber === 1 ? this.scene.player1 : this.scene.player2;
+        player.addScore(3); // Goles valen más en Fusión Total
+        this.scene.uiManager.showMessage(`¡GOL TOTAL! +3 J${playerNumber}`, 1000);
+        this.scene.ball.reset();
+    }
+    
+    updateModeLogic(delta) {
         const centerX = GAME_CONFIG.width / 2;
         const centerY = GAME_CONFIG.height / 2;
         
-        // Verificar cada jugador
+        // Reducir zona segura
+        if (this.currentSafeRadius > this.minSafeRadius) {
+            this.currentSafeRadius -= (this.shrinkRate * delta) / 1000;
+            this.safeZone.setRadius(Math.max(this.currentSafeRadius, this.minSafeRadius));
+        }
+        
+        // Daño por lava
         [this.scene.player1, this.scene.player2].forEach(player => {
-            const dist = Phaser.Math.Distance.Between(
-                player.sprite.x, player.sprite.y,
-                centerX, centerY
+            const playerDist = Phaser.Math.Distance.Between(
+                player.sprite.x, player.sprite.y, centerX, centerY
             );
             
-            if (dist > GAME_CONFIG.safeZoneRadius) {
-                // Fuera de zona segura - perder puntos
-                const damage = (this.damageRate * delta) / 1000;
+            if (playerDist > this.currentSafeRadius) {
+                const damage = (this.lavaDamageRate * delta) / 1000;
                 player.score = Math.max(0, player.score - damage);
-                player.inSafeZone = false;
-            } else {
-                player.inSafeZone = true;
             }
+        });
+        
+        // Mover porterías
+        const margin = 120;
+        const maxY = GAME_CONFIG.height - margin;
+        const minY = margin;
+        
+        this.movingGoals.forEach((goal, index) => {
+            const newY = goal.y + (this.goalSpeed * this.goalDirection[index] * delta) / 1000;
+            
+            if (newY >= maxY || newY <= minY) {
+                this.goalDirection[index] *= -1;
+            }
+            
+            goal.setY(Phaser.Math.Clamp(newY, minY, maxY));
+            goal.body.updateFromGameObject();
         });
     }
     
-    checkWinCondition() {
-        // Gana quien tenga más puntos (sobrevivió más en zona)
-        if (this.scene.player1.score > this.scene.player2.score) {
-            this.winner = 1;
-        } else if (this.scene.player2.score > this.scene.player1.score) {
-            this.winner = 2;
-        } else {
-            this.winner = 0;
+    cleanup() {
+        super.cleanup();
+        if (this.scene.ball) {
+            this.scene.ball.sprite.body.setBounce(0.8);
         }
-    }
-    
-    destroy() {
-        if (this.safeZone) this.safeZone.destroy();
-        if (this.dangerZone) this.dangerZone.destroy();
-    }
-}
-
-// =============================================================================
-// MODO 5: EMPUJÓN EXTREMO
-// =============================================================================
-
-class ExtremePushMode extends GameMode {
-    constructor(scene) {
-        super(scene, "¡EMPUJÓN EXTREMO!", "¡Empuja al rival fuera del mapa!");
-        this.boundary = null;
-    }
-    
-    start() {
-        super.start();
-        
-        // Resetear puntuaciones
-        this.scene.player1.resetScore();
-        this.scene.player2.resetScore();
-        
-        // Ocultar balón
-        this.scene.ball.setVisible(false);
-        
-        // Crear borde visual
-        this.createBoundary();
-        
-        // Desactivar colisión con bordes del mundo
-        this.scene.player1.sprite.body.setCollideWorldBounds(false);
-        this.scene.player2.sprite.body.setCollideWorldBounds(false);
-        
-        // Resetear posiciones
-        this.scene.player1.reset(GAME_CONFIG.width / 2 - 100, GAME_CONFIG.height / 2);
-        this.scene.player2.reset(GAME_CONFIG.width / 2 + 100, GAME_CONFIG.height / 2);
-    }
-    
-    createBoundary() {
-        const margin = 30;
-        this.boundary = this.scene.add.rectangle(
-            GAME_CONFIG.width / 2, GAME_CONFIG.height / 2,
-            GAME_CONFIG.width - margin * 2, GAME_CONFIG.height - margin * 2
-        );
-        this.boundary.setStrokeStyle(4, 0xff0000);
-        this.boundary.setDepth(-1);
-    }
-    
-    update(delta) {
-        // Verificar si algún jugador salió del mapa
-        this.checkOutOfBounds(this.scene.player1, 2);
-        this.checkOutOfBounds(this.scene.player2, 1);
-    }
-    
-    checkOutOfBounds(player, scoringPlayer) {
-        const sprite = player.sprite;
-        const margin = 30;
-        
-        if (sprite.x < margin || 
-            sprite.x > GAME_CONFIG.width - margin ||
-            sprite.y < margin || 
-            sprite.y > GAME_CONFIG.height - margin) {
-            
-            const scoringPlayerObj = scoringPlayer === 1 ? this.scene.player1 : this.scene.player2;
-            scoringPlayerObj.addScore(1);
-            
-            this.scene.uiManager.showMessage(`¡ELIMINADO! Punto J${scoringPlayer}`, 1000);
-            
-            // Resetear posiciones
-            this.scene.player1.reset(GAME_CONFIG.width / 2 - 100, GAME_CONFIG.height / 2);
-            this.scene.player2.reset(GAME_CONFIG.width / 2 + 100, GAME_CONFIG.height / 2);
-        }
-    }
-    
-    checkWinCondition() {
-        if (this.scene.player1.score > this.scene.player2.score) {
-            this.winner = 1;
-        } else if (this.scene.player2.score > this.scene.player1.score) {
-            this.winner = 2;
-        } else {
-            this.winner = 0;
-        }
-    }
-    
-    end() {
-        super.end();
-        // Restaurar colisión con bordes
-        this.scene.player1.sprite.body.setCollideWorldBounds(true);
-        this.scene.player2.sprite.body.setCollideWorldBounds(true);
-    }
-    
-    destroy() {
-        if (this.boundary) this.boundary.destroy();
+        if (this.goalOverlap1) this.goalOverlap1.destroy();
+        if (this.goalOverlap2) this.goalOverlap2.destroy();
     }
 }
 
@@ -675,6 +1312,9 @@ class GameModeManager {
         this.modeTimer = 0;
         this.isTransitioning = false;
         this.globalScores = { player1: 0, player2: 0 };
+        this.totalGameTime = 0;
+        this.isFinalMinute = false;
+        this.modesPlayed = 0;
         
         // Registrar modos
         this.registerModes();
@@ -682,12 +1322,16 @@ class GameModeManager {
     
     registerModes() {
         this.modes = [
-            new GoalMode(this.scene),
-            new PossessionMode(this.scene),
-            new CombatMode(this.scene),
-            new SafeZoneMode(this.scene),
-            new ExtremePushMode(this.scene)
+            new SurvivalGoalMode(this.scene),
+            new CarryDominanceMode(this.scene),
+            new TripleRiskMode(this.scene),
+            new DynamicGoalMode(this.scene),
+            new ExplosiveBallMode(this.scene),
+            new ImpactRallyMode(this.scene)
         ];
+        
+        // Modo especial para el último minuto
+        this.fusionTotalMode = new TotalFusionMode(this.scene);
     }
     
     start() {
@@ -695,6 +1339,13 @@ class GameModeManager {
     }
     
     selectNextMode() {
+        // Verificar si es el último minuto (después de 6 modos = 6 minutos)
+        if (this.modesPlayed >= 6 && !this.isFinalMinute) {
+            this.isFinalMinute = true;
+            this.startMode(this.fusionTotalMode);
+            return;
+        }
+        
         // Seleccionar modo aleatorio (sin repetir el último)
         let nextIndex;
         do {
@@ -715,8 +1366,11 @@ class GameModeManager {
         this.modeTimer = GAME_CONFIG.modeDuration;
         this.isTransitioning = false;
         
-        // Mostrar transición
-        this.scene.uiManager.showModeTransition(mode.name, mode.description);
+        // Mostrar transición con "NUEVA FUSIÓN:"
+        this.scene.uiManager.showModeTransition(
+            `NUEVA FUSIÓN: ${mode.name}`, 
+            mode.description
+        );
         
         // Iniciar modo después de transición
         this.scene.time.delayedCall(GAME_CONFIG.transitionDuration, () => {
@@ -730,10 +1384,19 @@ class GameModeManager {
         
         // Actualizar timer
         this.modeTimer -= delta;
+        this.totalGameTime += delta;
         
         // Actualizar modo actual
         if (this.currentMode && this.currentMode.isActive) {
             this.currentMode.update(delta);
+        }
+        
+        // Pausa antes de cambiar (1 segundo antes del fin)
+        if (this.modeTimer <= GAME_CONFIG.pauseBeforeChange && this.modeTimer > 0 && !this.isTransitioning) {
+            // Mostrar aviso de cambio
+            if (Math.ceil(this.modeTimer / 1000) === 1) {
+                this.scene.uiManager.showMessage('¡CAMBIO DE MODO!', 1000);
+            }
         }
         
         // Verificar fin del modo
@@ -744,6 +1407,7 @@ class GameModeManager {
     
     endCurrentMode() {
         this.isTransitioning = true;
+        this.modesPlayed++;
         
         if (this.currentMode) {
             this.currentMode.end();
@@ -760,11 +1424,34 @@ class GameModeManager {
             let resultText = winner === 0 ? "¡EMPATE!" : `¡GANA JUGADOR ${winner}!`;
             this.scene.uiManager.showMessage(resultText, 2000);
             
-            // Cambiar al siguiente modo
-            this.scene.time.delayedCall(2500, () => {
-                this.selectNextMode();
-            });
+            // Verificar si el juego terminó (después de Fusión Total)
+            if (this.isFinalMinute) {
+                this.scene.time.delayedCall(2500, () => {
+                    this.showFinalResult();
+                });
+            } else {
+                // Cambiar al siguiente modo
+                this.scene.time.delayedCall(2500, () => {
+                    this.selectNextMode();
+                });
+            }
         }
+    }
+    
+    showFinalResult() {
+        const p1Score = this.globalScores.player1;
+        const p2Score = this.globalScores.player2;
+        let finalMessage;
+        
+        if (p1Score > p2Score) {
+            finalMessage = `¡JUGADOR 1 GANA EL TORNEO!\n${p1Score} - ${p2Score}`;
+        } else if (p2Score > p1Score) {
+            finalMessage = `¡JUGADOR 2 GANA EL TORNEO!\n${p1Score} - ${p2Score}`;
+        } else {
+            finalMessage = `¡EMPATE ÉPICO!\n${p1Score} - ${p2Score}`;
+        }
+        
+        this.scene.uiManager.showMessage(finalMessage, 10000);
     }
     
     getTimeRemaining() {
@@ -777,6 +1464,10 @@ class GameModeManager {
     
     getGlobalScores() {
         return this.globalScores;
+    }
+    
+    isFinalMode() {
+        return this.isFinalMinute;
     }
 }
 
@@ -871,7 +1562,7 @@ class UIManager {
         this.elements.transitionTitle = this.scene.add.text(
             GAME_CONFIG.width / 2, GAME_CONFIG.height / 2 - 50,
             '',
-            { ...largeTextStyle, fontSize: '56px' }
+            { ...largeTextStyle, fontSize: '42px' }
         ).setOrigin(0.5);
         this.elements.transitionTitle.setDepth(151);
         this.elements.transitionTitle.setVisible(false);

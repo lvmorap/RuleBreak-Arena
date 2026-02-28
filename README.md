@@ -1,46 +1,75 @@
-# 🤖 Robot Arena Mutante
+# 🤖 FusionBots Arena
 
-Un juego competitivo 2D arcade para 2 jugadores locales, inspirado en Brawl Stars pero simplificado para Game Jam. El modo de juego cambia automáticamente cada 60 segundos, manteniendo la acción fresca y emocionante.
+Un juego competitivo 2D arcade para 2 jugadores locales basado en fusiones deportivas híbridas. El modo de juego cambia automáticamente cada 60 segundos, combinando mecánicas de distintos deportes en modos únicos y experimentales.
 
-![Robot Arena Mutante](https://img.shields.io/badge/Phaser-3.60.0-blue) ![License](https://img.shields.io/badge/License-MIT-green) ![Platform](https://img.shields.io/badge/Platform-GitHub%20Pages-orange)
+![FusionBots Arena](https://img.shields.io/badge/Phaser-3.60.0-blue) ![License](https://img.shields.io/badge/License-MIT-green) ![Platform](https://img.shields.io/badge/Platform-GitHub%20Pages-orange)
 
-## 📸 Screenshots
+## 🎮 Concepto del Juego
 
-![Gameplay](https://github.com/user-attachments/assets/1f18395e-bd21-428c-834a-22a5a9ea63c8)
+FusionBots Arena es un juego 2D top-down competitivo local donde dos robots compiten en una arena dinámica. Cada 60 segundos, el juego cambia automáticamente a un nuevo modo de juego que fusiona las mecánicas de dos deportes diferentes, creando experiencias de juego únicas y estratégicas.
 
-*Vista del juego en Modo Posesión - Dos jugadores compiten por mantener el balón*
-
-## 🎮 Características
-
-- **Multijugador local**: 2 jugadores en el mismo teclado
-- **5 modos de juego** que cambian automáticamente cada 60 segundos
-- **Físicas arcade** suaves y responsivas
-- **Vista top-down** 2D simple y clara
-- **Sin servidor requerido**: 100% frontend, perfecto para GitHub Pages
+El juego está diseñado para ser:
+- **Claro en menos de 10 segundos**: Mecánicas simples e intuitivas
+- **Competitivo**: Sistemas de puntuación balanceados
+- **Divertido**: Acción constante y cambios dinámicos
+- **Modular**: Fácil de añadir nuevos modos
+- **Extensible**: Arquitectura limpia para futuras mejoras
 
 ## 🕹️ Controles
 
 | Jugador | Movimiento | Empujar |
 |---------|------------|---------|
-| **Jugador 1** | W A S D | F |
-| **Jugador 2** | Flechas | Shift |
+| **Jugador 1 (Azul)** | W A S D | F |
+| **Jugador 2 (Rojo)** | Flechas | Shift |
 
-## 🎯 Modos de Juego
+- Movimiento en 8 direcciones
+- Empujar aplica impulso físico (cooldown: 800ms)
 
-### 1️⃣ Modo Gol ⚽
-Anota en la portería rival. Cada gol suma un punto. ¡El jugador con más goles al final gana!
+## 🎯 Modos de Juego Híbridos
 
-### 2️⃣ Modo Posesión 🏃
-Mantén el balón cerca de ti. El tiempo que pases en contacto con el balón se convierte en puntos.
+### 1️⃣ GOL DE SUPERVIVENCIA (Fútbol + Sumo)
+- **Mecánica principal**: Hay porterías, pero NO hay paredes laterales
+- **Gol**: +1 punto
+- **Empujar rival fuera del mapa**: +1 punto
+- **Regla especial**: Si el jugador que anota cae fuera dentro de 3 segundos, ¡el gol se anula!
 
-### 3️⃣ Modo Combate 💥
-No hay balón. Empuja al rival contra las paredes para ganar puntos. ¡Cada impacto fuerte cuenta!
+### 2️⃣ CARRY DOMINANCE (Rugby + Zona de Control)
+- **Sin porterías**: El balón debe cruzar la línea rival físicamente
+- **Cruzar línea rival con balón**: +2 puntos
+- **Zona central circular**: Permanecer dentro suma +1 punto cada 3 segundos
+- **Portador del balón**: Velocidad reducida al 70%
 
-### 4️⃣ Modo Zona Segura 🟢
-Hay una zona verde en el centro. ¡Mantente dentro! Fuera de ella pierdes puntos progresivamente.
+### 3️⃣ TRIPLE RIESGO (Baloncesto + Lava Progresiva)
+- **Canasta central**: Zona pequeña para encestar
+- **Encestar desde zona segura**: +1 punto
+- **Encestar desde zona de lava**: +3 puntos (¡triple!)
+- **Zona segura**: Se reduce progresivamente durante el modo
+- **Lava**: Permanecer en ella reduce puntos gradualmente
 
-### 5️⃣ Modo Empujón Extremo 🚀
-Los bordes del mapa están abiertos. ¡Empuja al rival fuera del mapa para ganar puntos!
+### 4️⃣ OBJETIVO DINÁMICO (Hockey + Porterías Móviles)
+- **Porterías móviles**: Dos porterías que se mueven verticalmente
+- **Balón de hockey**: Rebote fuerte (120%)
+- **Gol**: +1 punto
+- **Estrategia**: ¡Predice el movimiento de las porterías!
+
+### 5️⃣ IMPACTO CONTROLADO (Boxeo + Balón Explosivo)
+- **Balón bomba**: Tiene un temporizador visible (8 segundos)
+- **Explosión**: El jugador más cercano pierde 3 puntos
+- **Mecánica clave**: Empujar al rival hacia el balón
+- **El balón reaparece**: Después de cada explosión
+
+### 6️⃣ RALLY DE IMPACTO (Tenis + Empujón Libre)
+- **Línea central**: Divide el campo en dos lados
+- **El balón debe cruzar**: Constantemente de un lado a otro
+- **Punto para el rival**: Si el balón cae en tu lado sin que lo toques
+- **Empujones libres**: Se permite empujar sin restricciones
+
+### 🔥 FUSIÓN TOTAL (Modo Especial - Último Minuto)
+- **Activación**: Se activa en el séptimo minuto del partido
+- **Combina**: Lava progresiva + Porterías móviles
+- **Goles valen**: +3 puntos
+- **Puntos iniciales**: 30 por jugador
+- **Máxima intensidad**: ¡El modo definitivo!
 
 ## 🚀 Cómo Ejecutar
 
@@ -55,9 +84,11 @@ Los bordes del mapa están abiertos. ¡Empuja al rival fuera del mapa para ganar
    ```bash
    git clone https://github.com/tu-usuario/RuleBreak-Arena.git
    ```
-2. Abre `index.html` en tu navegador
+2. Abre `index.html` directamente en tu navegador
    - O usa un servidor local: `python -m http.server 8080`
    - Luego visita `http://localhost:8080`
+
+**Nota**: No requiere instalación de dependencias, build tools, ni servidor backend.
 
 ## 🏗️ Arquitectura
 
@@ -73,107 +104,185 @@ RuleBreak-Arena/
 ### Estructura del Código (main.js)
 
 ```
-┌─────────────────────────────────────────────────┐
-│                 GAME_CONFIG                      │
-│  (Configuración global: velocidades, tamaños)    │
-├─────────────────────────────────────────────────┤
-│                   COLORS                         │
-│  (Paleta de colores del juego)                   │
-├─────────────────────────────────────────────────┤
-│                 Clase Player                     │
-│  - Movimiento 8 direcciones                      │
-│  - Sistema de empuje con cooldown                │
-│  - Puntuación individual                         │
-├─────────────────────────────────────────────────┤
-│                  Clase Ball                      │
-│  - Física de rebote                              │
-│  - Interacción con jugadores                     │
-├─────────────────────────────────────────────────┤
-│             Clase GameMode (Base)                │
-│  - start(), update(), end()                      │
-│  - checkWinCondition()                           │
-├─────────────────────────────────────────────────┤
-│            Modos Específicos                     │
-│  - GoalMode                                      │
-│  - PossessionMode                                │
-│  - CombatMode                                    │
-│  - SafeZoneMode                                  │
-│  - ExtremePushMode                               │
-├─────────────────────────────────────────────────┤
-│             GameModeManager                      │
-│  - Temporizador 60 segundos                      │
-│  - Selección aleatoria sin repetir               │
-│  - Transiciones entre modos                      │
-├─────────────────────────────────────────────────┤
-│                UIManager                         │
-│  - Puntuaciones                                  │
-│  - Timer                                         │
-│  - Mensajes y transiciones                       │
-├─────────────────────────────────────────────────┤
-│                GameScene                         │
-│  - Escena principal de Phaser                    │
-│  - Coordina todos los sistemas                   │
-├─────────────────────────────────────────────────┤
-│             Configuración Phaser                 │
-│  - Arcade Physics                                │
-│  - Inicialización del juego                      │
-└─────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────┐
+│                    GAME_CONFIG                          │
+│  (Configuración: velocidades, tamaños, cooldowns)       │
+├─────────────────────────────────────────────────────────┤
+│                      COLORS                             │
+│  (Paleta de colores del juego)                          │
+├─────────────────────────────────────────────────────────┤
+│                   Clase Player                          │
+│  - Movimiento 8 direcciones                             │
+│  - Sistema de empuje con cooldown (800ms)               │
+│  - Puntuación individual                                │
+├─────────────────────────────────────────────────────────┤
+│                    Clase Ball                           │
+│  - Física de rebote configurable                        │
+│  - Interacción con jugadores                            │
+├─────────────────────────────────────────────────────────┤
+│               Clase GameMode (Base)                     │
+│  - start(), update(), end()                             │
+│  - checkWinCondition(), getWinner()                     │
+├─────────────────────────────────────────────────────────┤
+│              Clase HybridMode (Abstracta)               │
+│  - Extiende GameMode                                    │
+│  - setupArena(), setupPlayers(), setupBall()            │
+│  - updateModeLogic(), checkWinCondition(), cleanup()    │
+├─────────────────────────────────────────────────────────┤
+│              Modos Híbridos (6 + 1)                     │
+│  - SurvivalGoalMode (Fútbol + Sumo)                     │
+│  - CarryDominanceMode (Rugby + Zona)                    │
+│  - TripleRiskMode (Basket + Lava)                       │
+│  - DynamicGoalMode (Hockey + Porterías Móviles)         │
+│  - ExplosiveBallMode (Boxeo + Bomba)                    │
+│  - ImpactRallyMode (Tenis + Empujón)                    │
+│  - TotalFusionMode (Fusión Total)                       │
+├─────────────────────────────────────────────────────────┤
+│                GameModeManager                          │
+│  - Temporizador 60 segundos por modo                    │
+│  - Selección aleatoria sin repetir consecutivamente     │
+│  - Transiciones con overlay "NUEVA FUSIÓN:"             │
+│  - Fusión Total en el último minuto                     │
+├─────────────────────────────────────────────────────────┤
+│                  UIManager                              │
+│  - Puntuaciones (local y global)                        │
+│  - Timer con colores según tiempo restante              │
+│  - Mensajes centrales y transiciones                    │
+├─────────────────────────────────────────────────────────┤
+│                  GameScene                              │
+│  - Escena principal de Phaser                           │
+│  - Coordina todos los sistemas                          │
+│  - Maneja colisiones y empujes                          │
+├─────────────────────────────────────────────────────────┤
+│              Configuración Phaser                       │
+│  - Arcade Physics (gravedad: 0)                         │
+│  - Inicialización del juego                             │
+└─────────────────────────────────────────────────────────┘
 ```
 
-## 🎨 Stack Tecnológico
+## 🧩 Sistema Modular
 
-- **JavaScript ES6+**: Sin transpilación necesaria
-- **HTML5 Canvas**: Renderizado 2D
+### Cómo añadir un nuevo modo híbrido:
+
+1. Crear una nueva clase que extienda `HybridMode`:
+```javascript
+class NuevoModoMode extends HybridMode {
+    constructor(scene) {
+        super(
+            scene, 
+            "NOMBRE DEL MODO", 
+            "Descripción breve",
+            "Deporte1",
+            "Deporte2"
+        );
+    }
+    
+    setupArena() {
+        // Crear elementos visuales del arena
+    }
+    
+    setupPlayers() {
+        // Posicionar jugadores
+    }
+    
+    setupBall() {
+        // Configurar el balón
+    }
+    
+    updateModeLogic(delta) {
+        // Lógica principal del modo
+    }
+    
+    checkWinCondition() {
+        // Determinar ganador
+    }
+    
+    cleanup() {
+        // Limpiar elementos al terminar
+    }
+}
+```
+
+2. Registrar el modo en `GameModeManager.registerModes()`:
+```javascript
+this.modes = [
+    // ... modos existentes
+    new NuevoModoMode(this.scene)
+];
+```
+
+## 🎨 Estilo Visual
+
+- **Robots**: Círculos de colores (azul y rojo)
+- **Balón**: Círculo blanco con borde
+- **Lava**: Rojo semitransparente
+- **Zona segura**: Verde semitransparente
+- **Canasta**: Púrpura
+- **Fondo**: Gris oscuro (#2c3e50)
+- **Sin imágenes externas**: Todo renderizado con primitivas
+
+## ⚙️ Stack Tecnológico
+
+- **HTML5**: Estructura básica
+- **CSS3**: Estilos mínimos
+- **JavaScript ES6+**: Sin transpilación
 - **Phaser 3**: Framework de juegos (CDN)
-- **CSS3**: Estilos básicos
+- **Arcade Physics**: Sistema de físicas
 
 ## 📋 Requisitos Técnicos
 
-- Navegador moderno con soporte ES6
-- No requiere servidor backend
-- No requiere build tools
-- Funciona offline (después de cargar)
+- ✅ Navegador moderno con soporte ES6
+- ✅ No requiere servidor backend
+- ✅ No requiere Node.js
+- ✅ No requiere build tools
+- ✅ No requiere TypeScript
+- ✅ Funciona offline (después de cargar)
+- ✅ Compatible con GitHub Pages
 
 ## 🗺️ Roadmap de Mejoras Futuras
 
-### Fase 1: Polish Visual 🎨
+### 🎨 Polish Visual
 - [ ] Animaciones de personajes
-- [ ] Sprites personalizados
 - [ ] Efectos de partículas
-- [ ] Mejores transiciones
+- [ ] Mejores transiciones animadas
+- [ ] Efectos de cámara (zoom, follow)
+- [ ] Sprites personalizados para robots
 
-### Fase 2: Audio 🔊
-- [ ] Efectos de sonido
-- [ ] Música de fondo
+### 🔊 Audio
+- [ ] Efectos de sonido (goles, empujes, explosiones)
+- [ ] Música de fondo dinámica
 - [ ] Sonidos de UI
 
-### Fase 3: Contenido ➕
-- [ ] Más modos de juego:
-  - [ ] Modo Captura la Bandera
-  - [ ] Modo Rey de la Colina
-  - [ ] Modo Carrera
-  - [ ] Modo Supervivencia
-- [ ] Power-ups
-- [ ] Diferentes arenas/mapas
+### 🎮 Contenido
+- [ ] Power-ups dinámicos (velocidad, escudo, mega-empuje)
+- [ ] Más fusiones deportivas:
+  - [ ] Ping Pong + Gravedad Invertida
+  - [ ] Golf + Obstáculos Móviles
+  - [ ] Voleibol + Trampolines
+  - [ ] Béisbol + Zonas de Bonus
+- [ ] Sistema de selección manual de modos
+- [ ] Diferentes arenas/mapas temáticos
 
-### Fase 4: Jugabilidad 🎮
+### 🏆 Jugabilidad
 - [ ] IA básica para modo un jugador
-- [ ] Sistema de torneo
-- [ ] Selección de personajes
-- [ ] Habilidades especiales
+- [ ] Sistema de torneo completo
+- [ ] Modo práctica
+- [ ] Balanceo de físicas
+- [ ] Selección de personajes con habilidades
 
-### Fase 5: UI/UX 📱
-- [ ] Pantalla de menú principal
+### 📱 UI/UX
+- [ ] Pantalla de menú inicial
 - [ ] Pantalla de pausa
 - [ ] Configuración de controles
 - [ ] Soporte para gamepads
-- [ ] Responsive design
+- [ ] Responsive design para móviles
+- [ ] Mejor feedback visual (indicadores, efectos)
 
-### Fase 6: Técnico ⚙️
-- [ ] Mejores físicas
-- [ ] Balanceo de modos
+### ⚙️ Técnico
 - [ ] Optimización de rendimiento
-- [ ] Guardar estadísticas locales
+- [ ] Guardar estadísticas locales (localStorage)
+- [ ] Sistema de replay
+- [ ] Exportar como PWA
 
 ## 🤝 Contribuir
 
@@ -189,8 +298,8 @@ Este proyecto está bajo la Licencia MIT - ver el archivo [LICENSE](LICENSE) par
 
 ## 🎮 ¡A Jugar!
 
-¡Disfruta Robot Arena Mutante! Si te gusta, deja una ⭐ en el repositorio.
+¡Disfruta FusionBots Arena! Si te gusta, deja una ⭐ en el repositorio.
 
 ---
 
-*Creado con ❤️ para Game Jam 2026*
+*Creado con ❤️ - Un experimento de fusiones deportivas arcade*
