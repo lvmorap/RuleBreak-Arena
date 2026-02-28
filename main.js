@@ -16,7 +16,7 @@ const GAME_CONFIG = {
     pushCooldown: 800, // 800ms como especificado
     modeDuration: 60000, // 60 segundos
     transitionDuration: 2000, // 2 segundos de transición
-    pauseBeforeChange: 1000, // 1 segundo de pausa antes de cambiar
+    pauseBeforeChange: 1000, // Umbral en ms para mostrar aviso de cambio de modo
     ballDrag: 0.98,
     playerRadius: 25,
     ballRadius: 15,
@@ -309,6 +309,22 @@ class HybridMode extends GameMode {
         this.arenaElements = [];
     }
     
+    // Helper: Restaurar colisión con bordes del mundo
+    restoreWorldBoundsCollision() {
+        if (this.scene.player1 && this.scene.player1.sprite) {
+            this.scene.player1.sprite.body.setCollideWorldBounds(true);
+        }
+        if (this.scene.player2 && this.scene.player2.sprite) {
+            this.scene.player2.sprite.body.setCollideWorldBounds(true);
+        }
+    }
+    
+    // Helper: Desactivar colisión con bordes del mundo
+    disableWorldBoundsCollision() {
+        this.scene.player1.sprite.body.setCollideWorldBounds(false);
+        this.scene.player2.sprite.body.setCollideWorldBounds(false);
+    }
+    
     start() {
         super.start();
         this.scene.player1.resetScore();
@@ -402,8 +418,7 @@ class SurvivalGoalMode extends HybridMode {
         );
         
         // Desactivar colisión con bordes superior/inferior
-        this.scene.player1.sprite.body.setCollideWorldBounds(false);
-        this.scene.player2.sprite.body.setCollideWorldBounds(false);
+        this.disableWorldBoundsCollision();
     }
     
     scoreGoal(playerNumber) {
@@ -466,12 +481,7 @@ class SurvivalGoalMode extends HybridMode {
     cleanup() {
         super.cleanup();
         // Restaurar colisión con bordes
-        if (this.scene.player1) {
-            this.scene.player1.sprite.body.setCollideWorldBounds(true);
-        }
-        if (this.scene.player2) {
-            this.scene.player2.sprite.body.setCollideWorldBounds(true);
-        }
+        this.restoreWorldBoundsCollision();
         // Limpiar overlaps
         if (this.goalOverlap1) this.goalOverlap1.destroy();
         if (this.goalOverlap2) this.goalOverlap2.destroy();
@@ -1069,9 +1079,11 @@ class ImpactRallyMode extends HybridMode {
         this.touchedByPlayer = { 1: false, 2: false };
         this.lastTouchedBy = null;
         
-        // Dar velocidad inicial al balón
+        // Dar velocidad inicial al balón (evitar Y=0 para que no quede horizontal)
         const direction = Phaser.Math.Between(0, 1) === 0 ? -1 : 1;
-        this.scene.ball.sprite.body.setVelocity(direction * 150, Phaser.Math.Between(-100, 100));
+        const yDir = Phaser.Math.Between(0, 1) === 0 ? -1 : 1;
+        const yVelocity = yDir * Phaser.Math.Between(40, 100);
+        this.scene.ball.sprite.body.setVelocity(direction * 150, yVelocity);
     }
     
     updateModeLogic(delta) {
@@ -1106,9 +1118,10 @@ class ImpactRallyMode extends HybridMode {
         
         // Verificar si el balón cae en un lado sin ser tocado por el jugador de ese lado
         // El balón está "muerto" si su velocidad es muy baja en un lado
-        const ballSpeed = Math.sqrt(ball.body.velocity.x ** 2 + ball.body.velocity.y ** 2);
+        // Usar comparación de velocidad al cuadrado para evitar sqrt costoso
+        const ballSpeedSquared = ball.body.velocity.x ** 2 + ball.body.velocity.y ** 2;
         
-        if (ballSpeed < 30 && this.ballInPlay) {
+        if (ballSpeedSquared < 900 && this.ballInPlay) { // 900 = 30²
             // El balón se detuvo
             if (currentSide === 'left' && !this.touchedByPlayer[1]) {
                 // Cayó en lado de J1 sin que J1 lo tocara - punto para J2
@@ -1444,11 +1457,11 @@ class GameModeManager {
         let finalMessage;
         
         if (p1Score > p2Score) {
-            finalMessage = `¡JUGADOR 1 GANA EL TORNEO!\n${p1Score} - ${p2Score}`;
+            finalMessage = `¡JUGADOR 1 GANA! (${p1Score} - ${p2Score})`;
         } else if (p2Score > p1Score) {
-            finalMessage = `¡JUGADOR 2 GANA EL TORNEO!\n${p1Score} - ${p2Score}`;
+            finalMessage = `¡JUGADOR 2 GANA! (${p1Score} - ${p2Score})`;
         } else {
-            finalMessage = `¡EMPATE ÉPICO!\n${p1Score} - ${p2Score}`;
+            finalMessage = `¡EMPATE ÉPICO! (${p1Score} - ${p2Score})`;
         }
         
         this.scene.uiManager.showMessage(finalMessage, 10000);
