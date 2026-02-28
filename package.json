@@ -1,0 +1,35 @@
+{
+  "name": "rulebreak-arena",
+  "version": "1.0.0",
+  "description": "A competitive 3D multiplayer sports arena game with rotating game modes",
+  "type": "module",
+  "scripts": {
+    "dev:client": "vite client",
+    "dev:server": "node server/server.js",
+    "dev": "concurrently \"npm run dev:server\" \"npm run dev:client\"",
+    "build": "vite build client",
+    "start": "node server/server.js"
+  },
+  "dependencies": {
+    "cannon-es": "^0.20.0",
+    "express": "^4.18.2",
+    "socket.io": "^4.6.1",
+    "socket.io-client": "^4.6.1",
+    "three": "^0.160.0"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2",
+    "vite": "^5.0.11"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "keywords": [
+    "game",
+    "multiplayer",
+    "3d",
+    "arena",
+    "sports"
+  ],
+  "license": "MIT"
+}
